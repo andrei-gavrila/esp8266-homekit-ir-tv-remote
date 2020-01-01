@@ -64,6 +64,7 @@ typedef enum {
     HOMEKIT_ENDPOINT_GET_CHARACTERISTICS,
     HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS,
     HOMEKIT_ENDPOINT_PAIRINGS,
+    HOMEKIT_ENDPOINT_RESET,
     HOMEKIT_ENDPOINT_RESOURCE,
 } homekit_endpoint_t;
 
@@ -415,8 +416,8 @@ typedef enum {
 
 
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
-    json_string(json, "aid"); json_uint32(json, ch->service->accessory->id);
-    json_string(json, "iid"); json_uint32(json, ch->id);
+    json_string(json, "aid"); json_integer(json, ch->service->accessory->id);
+    json_string(json, "iid"); json_integer(json, ch->id);
 
     if (format & characteristic_format_type) {
         json_string(json, "type"); json_string(json, ch->type);
@@ -492,18 +493,18 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
         }
 
         if (ch->max_len) {
-            json_string(json, "maxLen"); json_uint32(json, *ch->max_len);
+            json_string(json, "maxLen"); json_integer(json, *ch->max_len);
         }
 
         if (ch->max_data_len) {
-            json_string(json, "maxDataLen"); json_uint32(json, *ch->max_data_len);
+            json_string(json, "maxDataLen"); json_integer(json, *ch->max_data_len);
         }
 
         if (ch->valid_values.count) {
             json_string(json, "valid-values"); json_array_start(json);
 
             for (int i=0; i<ch->valid_values.count; i++) {
-                json_uint16(json, ch->valid_values.values[i]);
+                json_integer(json, ch->valid_values.values[i]);
             }
 
             json_array_end(json);
@@ -538,22 +539,10 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     json_string(json, "value"); json_boolean(json, v.bool_value);
                     break;
                 }
-                case homekit_format_uint8: {
-                    json_string(json, "value"); json_uint8(json, v.uint8_value);
-                    break;
-                }
-                case homekit_format_uint16: {
-                    json_string(json, "value"); json_uint16(json, v.uint16_value);
-                    break;
-                }
-                case homekit_format_uint32: {
-                    json_string(json, "value"); json_uint32(json, v.uint32_value);
-                    break;
-                }
-                case homekit_format_uint64: {
-                    json_string(json, "value"); json_uint64(json, v.uint64_value);
-                    break;
-                }
+                case homekit_format_uint8:
+                case homekit_format_uint16:
+                case homekit_format_uint32:
+                case homekit_format_uint64:
                 case homekit_format_int: {
                     json_string(json, "value"); json_integer(json, v.int_value);
                     break;
@@ -592,23 +581,9 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     }
                     break;
                 }
-                case homekit_format_data: {
-                    json_string(json, "value");
-                    if (!v.data_value || v.data_size == 0) {
-                        json_string(json, "");
-                    } else {
-                        size_t encoded_data_size = base64_encoded_size(v.data_value, v.data_size);
-                        byte *encoded_data = malloc(encoded_data_size + 1);
-                        base64_encode(v.data_value, v.data_size, encoded_data);
-                        encoded_data[encoded_data_size] = 0;
-
-                        json_string(json, (char*) encoded_data);
-
-                        free(encoded_data);
-                    }
-
+                case homekit_format_data:
+                    // TODO:
                     break;
-                }
             }
         }
 
@@ -1997,7 +1972,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
         json_object_start(json);
 
-        json_string(json, "aid"); json_uint32(json, accessory->id);
+        json_string(json, "aid"); json_integer(json, accessory->id);
         json_string(json, "services"); json_array_start(json);
 
         for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
@@ -2005,14 +1980,14 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
             json_object_start(json);
 
-            json_string(json, "iid"); json_uint32(json, service->id);
+            json_string(json, "iid"); json_integer(json, service->id);
             json_string(json, "type"); json_string(json, service->type);
             json_string(json, "hidden"); json_boolean(json, service->hidden);
             json_string(json, "primary"); json_boolean(json, service->primary);
             if (service->linked) {
                 json_string(json, "linked"); json_array_start(json);
                 for (homekit_service_t **linked=service->linked; *linked; linked++) {
-                    json_uint32(json, (*linked)->id);
+                    json_integer(json, (*linked)->id);
                 }
                 json_array_end(json);
             }
@@ -2131,9 +2106,9 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 
     void write_characteristic_error(json_stream *json, int aid, int iid, int status) {
         json_object_start(json);
-        json_string(json, "aid"); json_uint32(json, aid);
-        json_string(json, "iid"); json_uint32(json, iid);
-        json_string(json, "status"); json_uint8(json, status);
+        json_string(json, "aid"); json_integer(json, aid);
+        json_string(json, "iid"); json_integer(json, iid);
+        json_string(json, "status"); json_integer(json, status);
         json_object_end(json);
     }
 
@@ -2159,7 +2134,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         json_object_start(json);
         write_characteristic_json(json, context, ch, format, NULL);
         if (!success) {
-            json_string(json, "status"); json_uint8(json, HAPStatus_Success);
+            json_string(json, "status"); json_integer(json, HAPStatus_Success);
         }
         json_object_end(json);
     }
@@ -2281,8 +2256,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    double min_value = 0;
-                    double max_value = 0;
+                    unsigned long long min_value = 0;
+                    unsigned long long max_value = 0;
 
                     switch (ch->format) {
                         case homekit_format_uint8: {
@@ -2317,22 +2292,20 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     }
 
                     if (ch->min_value)
-                        min_value = *ch->min_value;
+                        min_value = (int)*ch->min_value;
                     if (ch->max_value)
-                        max_value = *ch->max_value;
+                        max_value = (int)*ch->max_value;
 
-                    double value = j_value->valuedouble;
+                    int value = j_value->valueint;
                     if (value < min_value || value > max_value) {
-                        CLIENT_ERROR(context, "Failed to update %d.%d: value %g is not in range %g..%g",
-                                     aid, iid, value, min_value, max_value);
+                        CLIENT_ERROR(context, "Failed to update %d.%d: value is not in range", aid, iid);
                         return HAPStatus_InvalidValue;
                     }
 
                     if (ch->valid_values.count) {
                         bool matches = false;
-                        int v = (int)value;
                         for (int i=0; i<ch->valid_values.count; i++) {
-                            if (v == ch->valid_values.values[i]) {
+                            if (value == ch->valid_values.values[i]) {
                                 matches = true;
                                 break;
                             }
@@ -2360,30 +2333,10 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %g", aid, iid, value);
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %d", aid, iid, value);
 
-                    switch (ch->format) {
-                        case homekit_format_uint8:
-                            h_value = HOMEKIT_UINT8(value);
-                            break;
-                        case homekit_format_uint16:
-                            h_value = HOMEKIT_UINT16(value);
-                            break;
-                        case homekit_format_uint32:
-                            h_value = HOMEKIT_UINT32(value);
-                            break;
-                        case homekit_format_uint64:
-                            h_value = HOMEKIT_UINT64(value);
-                            break;
-                        case homekit_format_int:
-                            h_value = HOMEKIT_INT(value);
-                            break;
-
-                        default:
-                            CLIENT_ERROR(context, "Unexpected format when updating numeric value: %d", ch->format);
-                            return HAPStatus_InvalidValue;
-                    }
-
+                    h_value = HOMEKIT_INT(value);
+                    h_value.format = ch->format;
                     if (ch->setter_ex) {
                         ch->setter_ex(ch, h_value);
                     } else {
@@ -2490,40 +2443,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     break;
                 }
                 case homekit_format_data: {
-                    if (j_value->type != cJSON_String) {
-                        CLIENT_ERROR(context, "Failed to update %d.%d: value is not a string", aid, iid);
-                        return HAPStatus_InvalidValue;
-                    }
-
-                    // Default max data len = 2,097,152 but that does not make sense
-                    // for this accessory
-                    int max_len = (ch->max_data_len) ? *ch->max_data_len : 4096;
-
-                    char *value = j_value->valuestring;
-                    size_t value_len = strlen(value);
-                    if (value_len > max_len) {
-                        CLIENT_ERROR(context, "Failed to update %d.%d: value is too long", aid, iid);
-                        return HAPStatus_InvalidValue;
-                    }
-
-                    size_t data_size = base64_decoded_size((unsigned char*)value, value_len);
-                    byte *data = malloc(data_size);
-                    if (base64_decode((byte*) value, value_len, data) < 0) {
-                        free(data);
-                        CLIENT_ERROR(context, "Failed to update %d.%d: error Base64 decoding", aid, iid);
-                        return HAPStatus_InvalidValue;
-                    }
-
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with Data:", aid, iid);
-
-                    h_value = HOMEKIT_DATA(data, data_size);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        homekit_value_destruct(&ch->value);
-                        homekit_value_copy(&ch->value, &h_value);
-                    }
-
+                    // TODO:
                     break;
                 }
             }
@@ -2593,9 +2513,9 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
 
             json_object_start(json1);
-            json_string(json1, "aid"); json_uint32(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
-            json_string(json1, "iid"); json_uint32(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
-            json_string(json1, "status"); json_uint8(json1, statuses[i]);
+            json_string(json1, "aid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
+            json_string(json1, "iid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
+            json_string(json1, "status"); json_integer(json1, statuses[i]);
             json_object_end(json1);
         }
 
@@ -2933,6 +2853,8 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
             context->endpoint = HOMEKIT_ENDPOINT_PAIR_VERIFY;
         } else if (!strncmp(data, "/pairings", length)) {
             context->endpoint = HOMEKIT_ENDPOINT_PAIRINGS;
+        } else if (!strncmp(data, "/reset", length)) {
+            context->endpoint = HOMEKIT_ENDPOINT_RESET;
         } else if (!strncmp(data, "/resource", length)) {
             context->endpoint = HOMEKIT_ENDPOINT_RESOURCE;
         }
@@ -2964,53 +2886,47 @@ int homekit_server_on_body(http_parser *parser, const char *data, size_t length)
 int homekit_server_on_message_complete(http_parser *parser) {
     client_context_t *context = parser->data;
 
-    if (!context->encrypted) {
-        switch(context->endpoint) {
-            case HOMEKIT_ENDPOINT_PAIR_SETUP: {
-                homekit_server_on_pair_setup(context, (const byte *)context->body, context->body_length);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_PAIR_VERIFY: {
-                homekit_server_on_pair_verify(context, (const byte *)context->body, context->body_length);
-                break;
-            }
-            default: {
-                DEBUG("Unknown endpoint");
-                send_404_response(context);
-                break;
-            }
+    switch(context->endpoint) {
+        case HOMEKIT_ENDPOINT_PAIR_SETUP: {
+            homekit_server_on_pair_setup(context, (const byte *)context->body, context->body_length);
+            break;
         }
-    } else {
-        switch(context->endpoint) {
-            case HOMEKIT_ENDPOINT_IDENTIFY: {
-                homekit_server_on_identify(context);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_GET_ACCESSORIES: {
-                homekit_server_on_get_accessories(context);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_GET_CHARACTERISTICS: {
-                homekit_server_on_get_characteristics(context);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS: {
-                homekit_server_on_update_characteristics(context, (const byte *)context->body, context->body_length);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_PAIRINGS: {
-                homekit_server_on_pairings(context, (const byte *)context->body, context->body_length);
-                break;
-            }
-            case HOMEKIT_ENDPOINT_RESOURCE: {
-                homekit_server_on_resource(context);
-                break;
-            }
-            default: {
-                DEBUG("Unknown endpoint");
-                send_404_response(context);
-                break;
-            }
+        case HOMEKIT_ENDPOINT_PAIR_VERIFY: {
+            homekit_server_on_pair_verify(context, (const byte *)context->body, context->body_length);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_IDENTIFY: {
+            homekit_server_on_identify(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_GET_ACCESSORIES: {
+            homekit_server_on_get_accessories(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_GET_CHARACTERISTICS: {
+            homekit_server_on_get_characteristics(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS: {
+            homekit_server_on_update_characteristics(context, (const byte *)context->body, context->body_length);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_PAIRINGS: {
+            homekit_server_on_pairings(context, (const byte *)context->body, context->body_length);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_RESET: {
+            homekit_server_on_reset(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_RESOURCE: {
+            homekit_server_on_resource(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_UNKNOWN: {
+            DEBUG("Unknown endpoint");
+            send_404_response(context);
+            break;
         }
     }
 
@@ -3152,17 +3068,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
         return NULL;
     }
 
-    char address_buffer[INET_ADDRSTRLEN];
-
-    struct sockaddr_in addr;
-    socklen_t addr_len = sizeof(addr);
-    if (getpeername(s, (struct sockaddr *)&addr, &addr_len) == 0) {
-        inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
-    } else {
-        strcpy(address_buffer, "?.?.?.?");
-    }
-
-    INFO("Got new client connection: %d from %s", s, address_buffer);
+    INFO("Got new client connection: %d", s);
 
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
@@ -3170,7 +3076,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     const int yes = 1; /* enable sending keepalive probes for socket */
     setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
 
-    const int idle = 180; /* 180 sec idle before start sending probes */
+    const int idle = 180; /* 180 sec iddle before start sending probes */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
 
     const int interval = 30; /* 30 sec between probes */
@@ -3358,7 +3264,14 @@ void homekit_setup_mdns(homekit_server_t *server) {
         return;
     }
 
-    homekit_mdns_configure_init(name->value.string_value, PORT);
+    char unique_name[65]={0};
+    strncpy(unique_name, name->value.string_value, sizeof(unique_name)-6);
+    unique_name[strlen(unique_name)]='-';
+    unique_name[strlen(unique_name)]=server->accessory_id[0];
+    unique_name[strlen(unique_name)]=server->accessory_id[1];
+    unique_name[strlen(unique_name)]=server->accessory_id[3];
+    unique_name[strlen(unique_name)]=server->accessory_id[4];
+    homekit_mdns_configure_init(unique_name, PORT);
 
     // accessory model name (required)
     homekit_mdns_add_txt("md", "%s", model->value.string_value);
@@ -3534,12 +3447,7 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
-    if (pdPASS != xTaskCreate(homekit_server_task, "HomeKit Server",
-                              SERVER_TASK_STACK, server, 1, NULL)) {
-        ERROR("Error initializing HomeKit accessory server: "
-              "failed to start a server task");
-        server_free(server);
-    }
+    xTaskCreate(homekit_server_task, "HomeKit Server", SERVER_TASK_STACK, server, 1, NULL);
 }
 
 void homekit_server_reset() {
@@ -3577,58 +3485,6 @@ int homekit_get_accessory_id(char *buffer, size_t size) {
     strncpy(buffer, accessory_id, size);
 
     free(accessory_id);
-
-    return 0;
-}
-
-int homekit_get_setup_uri(const homekit_server_config_t *config, char *buffer, size_t buffer_size) {
-    static const char base36Table[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    if (buffer_size < 20)
-        return -1;
-
-    if (!config->password)
-        return -1;
-    // TODO: validate password in case it is run beffore server is started
-
-    if (!config->setupId)
-        return -1;
-    // TODO: validate setupID in case it is run beffore server is started
-
-    homekit_accessory_t *accessory = homekit_accessory_by_id(config->accessories, 1);
-    if (!accessory)
-        return -1;
-
-    uint32_t setup_code = 0;
-    for (const char *s = config->password; *s; s++)
-        if ISDIGIT(*s)
-            setup_code = setup_code * 10 + *s - '0';
-
-    uint64_t payload = 0;
-
-    payload <<= 4;  // reserved 4 bits
-
-    payload <<= 8;
-    payload |= accessory->category & 0xff;
-
-    payload <<= 4;
-    payload |= 2;  // flags (2=IP, 4=BLE, 8=IP_WAC)
-
-    payload <<= 27;
-    payload |= setup_code & 0x7fffffff;
-
-    strcpy(buffer, "X-HM://");
-    buffer += 7;
-    for (int i=8; i >= 0; i--) {
-        buffer[i] = base36Table[payload % 36];
-        payload /= 36;
-    }
-    buffer += 9;
-
-    strcpy(buffer, config->setupId);
-    buffer += 4;
-
-    buffer[0] = 0;
 
     return 0;
 }

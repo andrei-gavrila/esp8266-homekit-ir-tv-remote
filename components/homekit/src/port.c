@@ -77,6 +77,7 @@ void homekit_mdns_configure_finalize() {
 #ifdef ESP_IDF
 
 #include <string.h>
+#include <esp_system.h>
 #include <mdns.h>
 
 uint32_t homekit_random() {
